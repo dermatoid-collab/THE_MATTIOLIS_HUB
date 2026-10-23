@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "punto-hub",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-23",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "punto-db",
+    "database_id": "INSERIRE_ID_DATABASE",
+    "migrations_dir": "migrations"
+  }],
+  "vars": {
+    "APP_ORIGIN": "https://INSERIRE-INDIRIZZO.workers.dev",
+    "MAIL_FROM": "The Mattioli’s Hub <accesso@INSERIRE-DOMINIO.it>"
+  },
+  "observability": { "enabled": false }
+}
