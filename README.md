@@ -20,7 +20,7 @@ Progetto implementato e testato localmente, non ancora pubblicato. Non sono stat
 
 ## Progetti indipendenti
 
-Usa per questo progetto un Worker `punto-hub`, un database `punto-db` e le sue variabili/segreti. Non riutilizzare nomi, database o token dell’altro progetto. Le quote gratuite per account restano condivise: non c’è isolamento delle quote o della fatturazione. Non è presente alcun meccanismo di sospensione per inattività implementato dall’app. Le condizioni e le quote dei provider possono cambiare; non si può garantire gratuità perpetua.
+Usa per questo progetto un Worker `punto-hub`, un database `mattiolis_hub_db` e le sue variabili/segreti. Non riutilizzare nomi, database o token dell’altro progetto. Le quote gratuite per account restano condivise: non c’è isolamento delle quote o della fatturazione. Non è presente alcun meccanismo di sospensione per inattività implementato dall’app. Le condizioni e le quote dei provider possono cambiare; non si può garantire gratuità perpetua.
 
 ## Percorso consigliato: GitHub → Cloudflare
 
@@ -28,7 +28,7 @@ Il codice va nella radice del repository `dermatoid-collab/THE_MATTIOLIS_HUB`, n
 
 ### Prima configurazione, dal pannello Cloudflare
 
-1. In **Storage & databases → D1** crea un nuovo database `punto-db`, riservato a questo hub. Copia il suo **Database ID** nel campo `database_id` di `wrangler.jsonc` su GitHub. Non riutilizzare il database dell’altro progetto.
+1. Il database dedicato `mattiolis_hub_db` è già stato creato. Il suo ID `8ff12924-77ff-4af1-87e9-d09f6aa089f3` è configurato in `wrangler.jsonc` con binding `DB`. L’associazione è preparata nel codice; lo schema va ancora inizializzato sul database Cloudflare.
 2. Nel pannello del nuovo database apri **Console** ed esegui lo SQL di `migrations/0001_initial.sql` dal repository, una sola volta su questo database vuoto. In alternativa puoi usare il comando Wrangler documentato sotto. La console e il comando sono percorsi alternativi: non eseguire entrambi senza registrare la migrazione come applicata.
 3. In **Workers & Pages → Create application → GitHub** autorizza Cloudflare ad accedere a questo repository e selezionalo. Il Worker deve chiamarsi **`punto-hub`**, come `name` in `wrangler.jsonc`. Se il nome non è disponibile, aggiorna entrambi prima del deploy.
 4. Imposta ramo di produzione **`main`**, directory radice **`/`**, comando di build **`npm test`**, comando di deploy **`npx wrangler deploy`**. Non abilitare ancora le anteprime dei rami: la configurazione non prevede database di prova separati.
@@ -53,15 +53,15 @@ Questi comandi si eseguono dalla cartella `punto`. Richiedono Node.js LTS e npm.
    ```sh
    npm install --save-dev wrangler@4
    npx wrangler login
-   npx wrangler d1 create punto-db
+   npx wrangler d1 create mattiolis_hub_db
    ```
 
-3. Copia il `database_id` restituito in `wrangler.jsonc`, lasciando il binding `DB` e il nome `punto-db`. Se esiste già un database con questo nome, scegli un nome nuovo per questo progetto e aggiorna la configurazione. Non utilizzare quello dell’altro progetto.
+3. Copia il `database_id` restituito in `wrangler.jsonc`, lasciando il binding `DB` e il nome `mattiolis_hub_db`. Se esiste già un database con questo nome, scegli un nome nuovo per questo progetto e aggiorna la configurazione. Non utilizzare quello dell’altro progetto.
 4. In `wrangler.jsonc` inserisci in `APP_ORIGIN` l’indirizzo HTTPS definitivo del Worker, ad esempio `https://punto-hub.TUO-SOTTODOMINIO.workers.dev`, senza slash finale. Il sottodominio si vede nel pannello Workers & Pages. L’app richiede che l’origine della richiesta coincida esattamente con questo valore.
 5. Applica lo schema e le categorie iniziali al nuovo database:
 
    ```sh
-   npx wrangler d1 migrations apply punto-db --remote
+   npx wrangler d1 migrations apply mattiolis_hub_db --remote
    ```
 
 6. Genera un codice casuale per l’inizializzazione, ad esempio con il comando seguente. Conservalo privatamente: non è una password utente, ma abilita la creazione del primo amministratore. Non inserirlo nel codice o nel repository.
@@ -129,7 +129,7 @@ npm test
 La suite usa lo stesso Worker e lo schema SQL con un adattatore SQLite locale, non il runtime D1/Workers reale. Copre bootstrap, cookie, blocco accessi anonimi, controllo origine, login/logout, ruoli, link CRUD, URL pericolosi, preferiti, categorie eliminate, ultimo admin, inviti monouso, disattivazione, cambio password, scadenza reset, email simulate e limiti tentativi. Per una prova nel runtime locale ufficiale, dopo aver installato Wrangler:
 
 ```sh
-npx wrangler d1 migrations apply punto-db --local
+npx wrangler d1 migrations apply mattiolis_hub_db --local
 npx wrangler dev
 ```
 
@@ -141,7 +141,7 @@ Dopo il deploy, prima di invitare altre persone, verifica: creazione del primo a
 
 ## Backup e aggiornamenti
 
-Per esportare i soli link usa il pulsante Esporta nell’area admin. Per un backup completo, che include anche dati sensibili degli account, esegui separatamente `npx wrangler d1 export punto-db --remote --output backup.sql` e proteggi il file come una credenziale: contiene hash password e token/sessioni attivi. Non pubblicarlo e non includerlo nel repository. D1 offre anche Time Travel con conservazione limitata, non un backup eterno. La funzione di importazione link non è inclusa in questa versione.
+Per esportare i soli link usa il pulsante Esporta nell’area admin. Per un backup completo, che include anche dati sensibili degli account, esegui separatamente `npx wrangler d1 export mattiolis_hub_db --remote --output backup.sql` e proteggi il file come una credenziale: contiene hash password e token/sessioni attivi. Non pubblicarlo e non includerlo nel repository. D1 offre anche Time Travel con conservazione limitata, non un backup eterno. La funzione di importazione link non è inclusa in questa versione.
 
 Gli aggiornamenti dei link e degli utenti si eseguono dal sito. Per aggiornare il codice serve ridistribuire il Worker; per modifiche allo schema SQL si aggiungono nuove migrazioni, senza sovrascrivere la prima su un database già in uso. La normale gestione non richiede il computer di sviluppo sempre acceso.
 
@@ -157,6 +157,6 @@ Gli aggiornamenti dei link e degli utenti si eseguono dal sito. Per aggiornare i
 
 ## Identità di famiglia
 
-Nome pubblico: **The Mattioli’s Hub**. Messaggio principale: **Il nostro punto di incontro.** La raccolta dei link è condivisa; ogni familiare mantiene i propri preferiti. I nomi tecnici `punto-hub`, `punto-db` e dei file rimangono invariati per mantenere coerenti i passaggi di configurazione già forniti. Non sono state aggiunte funzioni di chat, calendario o condivisione file.
+Nome pubblico: **The Mattioli’s Hub**. Messaggio principale: **Il nostro punto di incontro.** La raccolta dei link è condivisa; ogni familiare mantiene i propri preferiti. I nomi tecnici `punto-hub`, `mattiolis_hub_db` e dei file rimangono invariati per mantenere coerenti i passaggi di configurazione già forniti. Non sono state aggiunte funzioni di chat, calendario o condivisione file.
 
 Categorie iniziali approvate: **Scienza, Viaggi, Casa**, in questo ordine. Modificabili dall’area admin. Nell’anteprima i siti sono esempi; il database di produzione parte senza link.
