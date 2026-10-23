@@ -12,8 +12,8 @@
   },
   "d1_databases": [{
     "binding": "DB",
-    "database_name": "punto-db",
-    "database_id": "INSERIRE_ID_DATABASE",
+    "database_name": "mattiolis_hub_db",
+    "database_id": "8ff12924-77ff-4af1-87e9-d09f6aa089f3",
     "migrations_dir": "migrations"
   }],
   "vars": {
