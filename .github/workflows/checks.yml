@@ -12,8 +12,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci
       - name: Verifica JavaScript
         run: |
+          node --check public/notifications.js
+          node --check public/sw.js
+          node --check src/notifications.mjs
           node --check public/app.js
           node --check public/shopping.js
           node --check src/shopping.mjs

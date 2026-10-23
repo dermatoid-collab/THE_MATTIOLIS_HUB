@@ -1,3 +1,4 @@
+import {notificationsRequest,recordActivity,recordRelease,dispatchNotifications} from './notifications.mjs';
 import {shoppingRequest} from './shopping.mjs';
 const encoder = new TextEncoder();
 const SESSION_TTL = 60 * 60 * 12;
@@ -49,7 +50,7 @@ async function getSession(req,env){const token=req.headers.get('cookie')?.split(
 async function startSession(env,user){const token=random();await env.DB.batch([statement(env,'DELETE FROM sessions WHERE expires_at<=?',now()),statement(env,'INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)',await digest(token),user.id,now()+SESSION_TTL)]);return json({user:safeUser(user)},200,{'Set-Cookie':cookie(env,token)});}
 function mailReady(env){return !!(env.RESEND_API_KEY&&env.MAIL_FROM&&!env.MAIL_FROM.includes('INSERIRE'));}
 async function sendReset(env,email,url){const res=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:env.MAIL_FROM,to:[email],subject:'The Mattioli’s Hub · Reimposta la password',text:`Hai richiesto una nuova password per The Mattioli’s Hub.\n\nApri questo link entro 30 minuti:\n${url}\n\nIl link è utilizzabile una sola volta. Se non hai richiesto tu il recupero, ignora questa email.\nThe Mattioli’s Hub non ti chiederà mai di comunicare la tua password.`})});if(!res.ok)throw new Error('MAIL_DELIVERY_FAILED');}
-export default {async fetch(req,env){
+async function handleRequest(req,env){
  try {
  const url=new URL(req.url),path=url.pathname,method=req.method;
  if(!path.startsWith('/api/'))return env.ASSETS.fetch(req);
@@ -96,6 +97,7 @@ export default {async fetch(req,env){
   return json({message:'Password impostata. Ora puoi accedere.'},200,{'Set-Cookie':cookie(env,'',0)});
  }
  const user=await getSession(req,env);if(!user)fail(401,'Accedi per continuare.');
+ if(path==='/api/notifications'||path.startsWith('/api/notifications/'))return await notificationsRequest(req,env,user,{body,json,fail,rate});
  if(path==='/api/shopping'||path.startsWith('/api/shopping/'))return await shoppingRequest(req,env,user,{body,json,fail});
  if(method==='GET'&&path==='/api/me')return json({user:safeUser(user)});
  if(method==='POST'&&path==='/api/logout'){const token=req.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName(env)+'='))?.split('=')[1];if(token)await run(env,'DELETE FROM sessions WHERE hash=?',await digest(token));return json({ok:true},200,{'Set-Cookie':cookie(env,'',0)});}
@@ -150,4 +152,15 @@ export default {async fetch(req,env){
  }
  fail(404,'Risorsa non trovata.');
  }catch(error){if(error instanceof HttpError)return json({error:error.message},error.status);const message=String(error.message||'');if(message.includes('LAST_ADMIN'))return json({error:'Deve rimanere almeno un amministratore attivo.'},409);if(message.includes('UNIQUE constraint'))return json({error:'Esiste già un elemento con questo nome o questa email.'},409);return json({error:'Servizio temporaneamente non disponibile. Riprova più tardi.'},503);}
-}};
+}
+
+export default {
+ async fetch(req,env,ctx){
+  const tracked=['POST','PATCH','DELETE'].includes(req.method)&&/^\/api\/(shopping(?:\/|$)|admin\/(links|categories)(?:\/|$))/.test(new URL(req.url).pathname);
+  const copy=tracked?req.clone():null;
+  const response=await handleRequest(req,env);
+  if(tracked&&response.ok){try{const user=await getSession(req,env);if(user)await recordActivity(copy,env,response,user);}catch{console.error('Notification event unavailable');}if(ctx)ctx.waitUntil(dispatchNotifications(env).catch(()=>console.error('Notification dispatch unavailable')));}
+  return response;
+ },
+ async scheduled(controller,env,ctx){const task=(async()=>{await recordRelease(env);await dispatchNotifications(env);})();ctx.waitUntil(task);}
+};

@@ -102,5 +102,5 @@ export function createShopping({request,icon,esc,openModal,toast,currentUser}){
   if((match=path.match(/^\/shopping\/items\/([^/]+)(?:\/(restore|move))?$/))){const item=demoState.items.find(i=>i.id===match[1]);if(!item)throw Error('Prodotto non trovato.');if(match[2]==='restore')item.deleted=0;else if(match[2]==='move'){const rows=demoState.items.filter(i=>i.list_id===item.list_id&&!i.checked&&!i.deleted).sort((a,b)=>a.position-b.position),index=rows.indexOf(item),other=rows[index+(b.direction==='up'?-1:1)];if(other)[item.position,other.position]=[other.position,item.position];}else if(method==='DELETE')item.deleted=1;else Object.assign(item,b,{checked_by_name:b.checked?u.name:null});item.version++;return{ok:true};}
   throw Error('Operazione di esempio non disponibile.');
  }
- return {render,setVisible,reset,demoRequest};
+ return {render,setVisible,reset,demoRequest,openList(id){state.selected=id;state.draft={name:"",quantity:""};paint();}};
 }

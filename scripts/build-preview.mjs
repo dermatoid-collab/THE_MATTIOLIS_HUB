@@ -4,7 +4,8 @@ const root=new URL('../',import.meta.url);
 let html=readFileSync(new URL('public/index.html',root),'utf8');
 const css=readFileSync(new URL('public/style.css',root),'utf8');
 const shopping=readFileSync(new URL('public/shopping.js',root),'utf8').replace('export function createShopping','function createShopping');
-let js=shopping+'\n'+readFileSync(new URL('public/app.js',root),'utf8').replace("import {createShopping} from './shopping.js';",'');
+const notifications=readFileSync(new URL('public/notifications.js',root),'utf8').replace('export function createNotifications','function createNotifications');
+let js=notifications+'\n'+shopping+'\n'+readFileSync(new URL('public/app.js',root),'utf8').replace("import {createNotifications} from './notifications.js';",'').replace("import {createShopping} from './shopping.js';",'');
 // This artifact intentionally starts the demo even inside an HTML preview service.
 js=js.replace("if(location.protocol==='file:'||new URLSearchParams(location.search).has('demo'))", "if(true)");
 const favicon='data:image/svg+xml,'+encodeURIComponent(readFileSync(new URL('public/favicon.svg',root),'utf8'));
