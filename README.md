@@ -160,3 +160,24 @@ Gli aggiornamenti dei link e degli utenti si eseguono dal sito. Per aggiornare i
 Nome pubblico: **The Mattioli’s Hub**. Messaggio principale: **Il nostro punto di incontro.** La raccolta dei link è condivisa; ogni familiare mantiene i propri preferiti. I nomi tecnici `punto-hub`, `mattiolis_hub_db` e dei file rimangono invariati per mantenere coerenti i passaggi di configurazione già forniti. Non sono state aggiunte funzioni di chat, calendario o condivisione file.
 
 Categorie iniziali approvate: **Scienza, Viaggi, Casa**, in questo ordine. Modificabili dall’area admin. Nell’anteprima i siti sono esempi; il database di produzione parte senza link.
+
+## Lista della spesa condivisa
+
+La sezione “Lista della spesa” è disponibile a tutti gli utenti attivi, non solo agli amministratori. Ogni lista ha titolo, colore e prodotti con quantità facoltative. Tutti i familiari possono creare, modificare e spuntare i prodotti; le indicazioni “Aggiunto da” e “Spuntato da” mostrano il nome del familiare.
+
+- Vista a schede e filtri Tutte, Da completare, Completate e Archivio.
+- Inserimento rapido con Invio; riordino manuale dei prodotti da acquistare tramite frecce.
+- Prodotti acquistati raccolti in una sezione richiudibile.
+- Archiviazione e ripristino delle liste senza cancellazione dei prodotti.
+- “Riutilizza lista” toglie le spunte ai prodotti esistenti; non ripristina quelli rimossi.
+- La rimozione di un prodotto è logica e può essere annullata dall’avviso in pagina. Non è presente una cancellazione fisica dei prodotti via API.
+- Sincronizzazione ogni 12 secondi mentre la sezione è aperta e visibile. Il polling viene sospeso durante la compilazione di una voce non vuota o con un dialogo aperto; le bozze di inserimento vengono mantenute in memoria. Non c’è una modalità offline con accodamento: in assenza di connessione un’operazione fallisce e viene segnalata.
+- Le modifiche ai prodotti e alle proprietà delle liste usano versioni ottimistiche: una modifica basata su dati superati riceve HTTP 409, senza sovrascrivere la modifica del familiare.
+
+### Aggiornamento del database esistente
+
+Non è necessario eseguire nuovamente `0001_initial.sql`. Lo schema shopping viene creato automaticamente alla prima richiesta autenticata a `/api/shopping`, tramite `CREATE TABLE/INDEX IF NOT EXISTS`, in un batch D1. L’inizializzazione aggiunge solo `shopping_lists`, `shopping_items` e i loro indici: non modifica le tabelle o i record precedenti. Le richieste anonime vengono respinte prima di poter inizializzare lo schema.
+
+Il file `migrations/0002_shopping.sql` contiene lo stesso schema additivo, applicabile anche dal normale percorso di migrazioni su una configurazione che lo utilizza già. È idempotente. Nessuna lista dimostrativa viene inserita in produzione. Le liste d’esempio esistono soltanto nell’anteprima `?demo=1`.
+
+I test shopping verificano accessi, inizializzazione idempotente, uso condiviso da utenti normali, quantità, aggiunte concorrenti, conflitti, spunte, rimozione e ripristino, archivio, riutilizzo e riordino. I test restano locali con SQLite; il dry-run Wrangler verifica il bundle del Worker, non il database Cloudflare remoto.

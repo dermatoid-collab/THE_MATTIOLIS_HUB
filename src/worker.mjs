@@ -1,3 +1,4 @@
+import {shoppingRequest} from './shopping.mjs';
 const encoder = new TextEncoder();
 const SESSION_TTL = 60 * 60 * 12;
 const GENERIC_RESET = 'Se l’indirizzo è associato a un account attivo, riceverai un link per scegliere una nuova password.';
@@ -95,6 +96,7 @@ export default {async fetch(req,env){
   return json({message:'Password impostata. Ora puoi accedere.'},200,{'Set-Cookie':cookie(env,'',0)});
  }
  const user=await getSession(req,env);if(!user)fail(401,'Accedi per continuare.');
+ if(path==='/api/shopping'||path.startsWith('/api/shopping/'))return await shoppingRequest(req,env,user,{body,json,fail});
  if(method==='GET'&&path==='/api/me')return json({user:safeUser(user)});
  if(method==='POST'&&path==='/api/logout'){const token=req.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName(env)+'='))?.split('=')[1];if(token)await run(env,'DELETE FROM sessions WHERE hash=?',await digest(token));return json({ok:true},200,{'Set-Cookie':cookie(env,'',0)});}
  if(method==='POST'&&path==='/api/password'){
