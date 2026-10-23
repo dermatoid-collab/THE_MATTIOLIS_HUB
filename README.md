@@ -34,7 +34,7 @@ Il codice va nella radice del repository `dermatoid-collab/THE_MATTIOLIS_HUB`, n
 4. Imposta ramo di produzione **`main`**, directory radice **`/`**, comando di build **`npm test`**, comando di deploy **`npx wrangler deploy`**. Non abilitare ancora le anteprime dei rami: la configurazione non prevede database di prova separati.
 5. Il primo deploy distribuisce solo codice e schema di accesso; le mutazioni restano bloccate finché `APP_ORIGIN` contiene il segnaposto. Copia l’indirizzo HTTPS effettivo del Worker e inseriscilo in `APP_ORIGIN` dentro `wrangler.jsonc`, senza slash finale, poi salva il commit. Il nuovo commit attiva un deploy aggiornato.
 6. Nelle impostazioni del Worker, **Variables and Secrets**, aggiungi `BOOTSTRAP_TOKEN` come **Secret**, usando un codice casuale lungo creato e conservato da te. Puoi generarlo con un password manager. Non inserirlo in GitHub, nei comandi o in chat. Applica/pubblica la nuova configurazione. Il segreto appartiene al Worker di produzione, non soltanto all’ambiente di build.
-7. Apri l’hub e crea il primo amministratore con quel codice, il tuo nome, email e una password di almeno 12 caratteri. Dopo l’attivazione elimina `BOOTSTRAP_TOKEN` dal Worker e applica la configurazione.
+7. Apri l’hub e crea il primo amministratore con quel codice, il tuo nome, email e una password non vuota, senza requisiti di lunghezza o composizione. Dopo l’attivazione elimina `BOOTSTRAP_TOKEN` dal Worker e applica la configurazione.
 8. Configura separatamente il servizio email per il recupero password, come spiegato sotto. Fino ad allora l’hub segnala che il recupero via email non è disponibile.
 
 Lo schema SQL caricato dalla Console non crea automaticamente il registro delle migrazioni Wrangler. Per aggiornamenti futuri usa nuove migrazioni con un percorso coerente e non riapplicare la prima a un database esistente. Prima di aggiornare lo schema esegui un backup.
@@ -79,7 +79,7 @@ Questi comandi si eseguono dalla cartella `punto`. Richiedono Node.js LTS e npm.
    npx wrangler deploy
    ```
 
-8. Apri il sito: se non ci sono utenti, compare la configurazione iniziale. Inserisci il codice, il tuo nome, l’email e una password di almeno 12 caratteri. La creazione del primo utente è atomica; non esiste un account predefinito. Non usare l’anteprima per questo passaggio.
+8. Apri il sito: se non ci sono utenti, compare la configurazione iniziale. Inserisci il codice, il tuo nome, l’email e una password non vuota, senza requisiti di lunghezza o composizione. La creazione del primo utente è atomica; non esiste un account predefinito. Non usare l’anteprima per questo passaggio.
 9. Dopo aver creato il tuo amministratore, elimina il codice di bootstrap:
 
    ```sh
@@ -110,7 +110,7 @@ Senza configurazione il recupero mostra esplicitamente che il servizio non è at
 ## Policy di accesso
 
 - Registrazione pubblica disattivata. Ruoli: `admin` e `user`.
-- Password tra 12 e 128 caratteri; vengono salvati hash PBKDF2 SHA-256 con sale casuale e 100.000 iterazioni, compatibili con Web Crypto Workers. Mai password in chiaro nel database. Questo parametro va rivalutato con i limiti del runtime e con l’evoluzione delle raccomandazioni; per requisiti più elevati è preferibile un servizio di identità dedicato o un KDF più oneroso su un runtime adeguato.
+- Password non vuote, senza requisiti di lunghezza o composizione; vengono salvati hash PBKDF2 SHA-256 con sale casuale e 100.000 iterazioni, compatibili con Web Crypto Workers. Mai password in chiaro nel database. Questo parametro va rivalutato con i limiti del runtime e con l’evoluzione delle raccomandazioni; per requisiti più elevati è preferibile un servizio di identità dedicato o un KDF più oneroso su un runtime adeguato.
 - Sessioni di 12 ore, cookie HttpOnly, Secure e SameSite=Strict in produzione, token casuali memorizzati nel database soltanto come hash.
 - Link di recupero validi 30 minuti; link di attivazione validi 24 ore. Tutti monouso. Queste scadenze proteggono le credenziali e non sono scadenze dell’hosting.
 - Cambio password e recupero chiudono tutte le sessioni dell’utente e invalidano gli altri token.
