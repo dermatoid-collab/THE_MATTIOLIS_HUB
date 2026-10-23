@@ -68,3 +68,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .auth-theme-picker{position:absolute;top:22px;right:26px;z-index:5}
 @media(max-width:760px){.auth-theme-picker{top:17px;right:18px}.theme-label{display:none}.top-actions{gap:8px}.theme-picker{padding:3px}.theme-swatch{width:25px;height:25px}.auth-main{padding-top:75px}}
 @media(max-width:520px){.topbar .breadcrumb{display:none}}
+
+/* Keep the profile initial readable in every palette and interaction state. */
+.top-actions .avatar.icon-button,
+.top-actions .avatar.icon-button:hover,
+.top-actions .avatar.icon-button:focus-visible{color:#fff;background:var(--avatar,#637f8d)}
