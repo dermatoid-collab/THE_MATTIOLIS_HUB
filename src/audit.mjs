@@ -3,7 +3,7 @@ const ready=new WeakMap();
 export async function ensureAudit(env){if(!ready.has(env.DB))ready.set(env.DB,env.DB.batch(auditSchema.map(s=>env.DB.prepare(s))).catch(e=>{ready.delete(env.DB);throw e;}));await ready.get(env.DB);}
 export async function auditContext(req,env,user){
  const path=new URL(req.url).pathname;if(req.method==='GET'||!path.startsWith('/api/')||path==='/api/forgot'||!env.DB)return null;
- const resource=path.split('/').slice(2).join('/');let actor=user,b={};try{b=await req.clone().json();}catch{}
+ const resource=path.split('/').slice(2).join('/');let actor=user,b={};if(!path.startsWith('/api/covers/'))try{b=await req.clone().json();}catch{}
  if(!actor&&path==='/api/reset'&&typeof b.token==='string'&&/^[a-f0-9]{64}$/.test(b.token)){
   const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(b.token))),n=>n.toString(16).padStart(2,'0')).join('');
   actor=await env.DB.prepare('SELECT u.id,u.name FROM tokens t JOIN users u ON u.id=t.user_id WHERE t.hash=? AND t.used_at IS NULL AND t.expires_at>? AND u.active=1').bind(hash,Math.floor(Date.now()/1000)).first();
@@ -13,7 +13,7 @@ export async function auditContext(req,env,user){
  const match=path.match(/^\/api\/(?:admin\/(links|categories|users)|shopping\/(lists|items)|favorites)\/([^/]+)/);
  if(match){targetId=match[3];const table={links:'links',categories:'categories',users:'users',lists:'shopping_lists',items:'shopping_items'}[match[1]||match[2]]||(path.startsWith('/api/favorites/')?'links':null);if(table){try{const column=['links','shopping_lists'].includes(table)?'title':'name';const row=await env.DB.prepare(`SELECT ${column} label FROM ${table} WHERE id=?`).bind(targetId).first();targetName=row?.label||null;}catch{}}}
  if(typeof (b.title||b.name)==='string')targetName=(b.title||b.name).slice(0,120);
- let action=req.method;
+ let action=req.method;if(path.startsWith('/api/covers/'))action=req.method==='DELETE'?'Copertina rimossa':'Copertina aggiornata';
  if(path.startsWith('/api/shopping/')){if(typeof b.checked==='boolean')action=b.checked?'Prodotto spuntato':'Prodotto da acquistare';else if(typeof b.archived==='boolean')action=b.archived?'Lista archiviata':'Lista ripristinata';else if(path.endsWith('/move'))action='Prodotto riordinato';else if(path.endsWith('/reuse'))action='Lista preparata per nuova spesa';else if(path.endsWith('/restore'))action='Prodotto ripristinato';}
  return {actor,resource,targetId,targetName,action,path};
 }

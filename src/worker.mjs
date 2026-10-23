@@ -1,3 +1,5 @@
+import {sendMail,mailConfigured as mailReady} from './mail.mjs';
+import {coversRequest} from './covers.mjs';
 import {auditContext,writeAudit,auditRequest} from './audit.mjs';
 import {notificationsRequest,recordActivity,recordRelease,dispatchNotifications} from './notifications.mjs';
 import {shoppingRequest} from './shopping.mjs';
@@ -49,8 +51,7 @@ function originCheck(req,env){const origin=req.headers.get('origin');if(!env.APP
 async function rate(env,key,limit,seconds){const k=await digest(key);const t=now();const row=await first(env,`INSERT INTO rate_limits(key,attempts,until_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN until_at<=? THEN 1 ELSE attempts+1 END,until_at=CASE WHEN until_at<=? THEN excluded.until_at ELSE until_at END RETURNING attempts`,k,t+seconds,t,t);if(row.attempts>limit)fail(429,'Troppi tentativi. Riprova più tardi.');}
 async function getSession(req,env){const token=req.headers.get('cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith(cookieName(env)+'='))?.split('=')[1];if(!token)return null;return first(env,'SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.hash=? AND s.expires_at>? AND u.active=1',await digest(token),now());}
 async function startSession(env,user){const token=random();await env.DB.batch([statement(env,'DELETE FROM sessions WHERE expires_at<=?',now()),statement(env,'INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)',await digest(token),user.id,now()+SESSION_TTL)]);return json({user:safeUser(user)},200,{'Set-Cookie':cookie(env,token)});}
-function mailReady(env){return !!(env.RESEND_API_KEY&&env.MAIL_FROM&&!env.MAIL_FROM.includes('INSERIRE'));}
-async function sendReset(env,email,url){const res=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:env.MAIL_FROM,to:[email],subject:'The Mattioli’s Hub · Reimposta la password',text:`Hai richiesto una nuova password per The Mattioli’s Hub.\n\nApri questo link entro 30 minuti:\n${url}\n\nIl link è utilizzabile una sola volta. Se non hai richiesto tu il recupero, ignora questa email.\nThe Mattioli’s Hub non ti chiederà mai di comunicare la tua password.`})});if(!res.ok)throw new Error('MAIL_DELIVERY_FAILED');}
+async function sendReset(env,email,url){const res=await sendMail(env,{to:email,subject:'The Mattioli’s Hub · Reimposta la password',text:`Hai richiesto una nuova password per The Mattioli’s Hub.\n\nApri questo link entro 30 minuti:\n${url}\n\nIl link è utilizzabile una sola volta. Se non hai richiesto tu il recupero, ignora questa email.\nThe Mattioli’s Hub non ti chiederà mai di comunicare la tua password.`});if(!res.ok)throw new Error('MAIL_DELIVERY_FAILED');}
 async function handleRequest(req,env){
  try {
  const url=new URL(req.url),path=url.pathname,method=req.method;
@@ -98,6 +99,7 @@ async function handleRequest(req,env){
   return json({message:'Password impostata. Ora puoi accedere.'},200,{'Set-Cookie':cookie(env,'',0)});
  }
  const user=await getSession(req,env);if(!user)fail(401,'Accedi per continuare.');
+ if(path==='/api/covers'||path.startsWith('/api/covers/'))return await coversRequest(req,env,user,{json,fail,rate});
  if(path==='/api/notifications'||path.startsWith('/api/notifications/'))return await notificationsRequest(req,env,user,{body,json,fail,rate});
  if(path==='/api/shopping'||path.startsWith('/api/shopping/'))return await shoppingRequest(req,env,user,{body,json,fail});
  if(method==='GET'&&path==='/api/me')return json({user:safeUser(user)});
@@ -158,7 +160,7 @@ async function handleRequest(req,env){
 
 export default {
  async fetch(req,env,ctx){
-  const tracked=['POST','PATCH','DELETE'].includes(req.method)&&/^\/api\/(shopping(?:\/|$)|admin\/(links|categories)(?:\/|$))/.test(new URL(req.url).pathname);
+  const tracked=['POST','PATCH','DELETE'].includes(req.method)&&/^\/api\/(shopping(?:\/|$)|admin\/(links|categories)(?:\/|$)|covers\/family$)/.test(new URL(req.url).pathname);
   const copy=tracked?req.clone():null;
   let audit=null;try{audit=await auditContext(req,env,env.DB?await getSession(req,env):null);}catch{console.error('Audit context unavailable');}
   const response=await handleRequest(req,env);

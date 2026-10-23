@@ -20,6 +20,9 @@ jobs:
           node --check src/notifications.mjs
           node --check public/audit.js
           node --check src/audit.mjs
+          node --check public/covers.js
+          node --check src/covers.mjs
+          node --check src/mail.mjs
           node --check public/app.js
           node --check public/shopping.js
           node --check src/shopping.mjs

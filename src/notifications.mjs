@@ -1,3 +1,5 @@
+import {sendMail,mailConfigured} from './mail.mjs';
+export {mailConfigured} from './mail.mjs';
 import {buildPushPayload} from '@block65/webcrypto-web-push';
 export const notificationSchema=[
  `CREATE TABLE IF NOT EXISTS notification_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,push_enabled INTEGER NOT NULL DEFAULT 0,email_enabled INTEGER NOT NULL DEFAULT 0,links INTEGER NOT NULL DEFAULT 1,shopping INTEGER NOT NULL DEFAULT 1,releases INTEGER NOT NULL DEFAULT 1,ignore_own INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL)`,
@@ -19,7 +21,6 @@ const run=(env,sql,...v)=>q(env,sql,...v).run();
 const b64=bytes=>btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 const from64=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
 const sha=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),x=>x.toString(16).padStart(2,'0')).join('');
-export const mailConfigured=env=>!!(env.RESEND_API_KEY&&env.MAIL_FROM&&!env.MAIL_FROM.includes('INSERIRE'));
 export async function vapidKeys(env){
  await ensureNotifications(env);let stored=await one(env,"SELECT value FROM notification_config WHERE key='vapid'");
  if(!stored){const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);const privateJwk=await crypto.subtle.exportKey('jwk',pair.privateKey);const keys={publicKey:b64(await crypto.subtle.exportKey('raw',pair.publicKey)),privateKey:privateJwk.d};await run(env,"INSERT OR IGNORE INTO notification_config(key,value) VALUES('vapid',?)",JSON.stringify(keys));stored=await one(env,"SELECT value FROM notification_config WHERE key='vapid'");}
@@ -41,9 +42,7 @@ async function sendPush(env,subscription,data){
  const keys=await vapidKeys(env);const payload=await buildPushPayload({data:JSON.stringify(data),options:{ttl:3600,urgency:'normal'}},subscription,keys);
  return fetch(subscription.endpoint,{...payload,redirect:'error',signal:AbortSignal.timeout(8000)});
 }
-async function sendEmail(env,to,event,key){
- return fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${env.RESEND_API_KEY}`,'Content-Type':'application/json','Idempotency-Key':key},signal:AbortSignal.timeout(8000),body:JSON.stringify({from:env.MAIL_FROM,to:[to],subject:`The Mattioli’s Hub · ${event.title}`,text:`${event.body}\n\nApri l’hub:\n${env.APP_ORIGIN}${safeUrl(event.url)}\n\nPuoi scegliere quali aggiornamenti ricevere in Il mio account → Preferenze notifiche:\n${env.APP_ORIGIN}/#notifications`})});
-}
+async function sendEmail(env,to,event,key){return sendMail(env,{to,id:key,subject:`The Mattioli’s Hub · ${event.title}`,text:`${event.body}\n\nApri l’hub:\n${env.APP_ORIGIN}${safeUrl(event.url)}\n\nPuoi gestire le preferenze notifiche nel tuo account:\n${env.APP_ORIGIN}/#notifications`});}
 export async function recordEvent(env,{id=crypto.randomUUID(),key=null,category,actorId=null,title,body,url='/'}){
  await ensureNotifications(env);if(!['links','shopping','releases'].includes(category))throw Error('EVENT_CATEGORY');
  const t=Date.now();
@@ -76,6 +75,7 @@ export async function recordActivity(req,env,response,user){
   else if(item&&typeof b.checked==='boolean')body=`${user.name} ha ${b.checked?'spuntato':'rimesso da acquistare'} “${item.name}” in “${name}”.`;
   else if(typeof b.archived==='boolean')body=`${user.name} ha ${b.archived?'archiviato':'ripristinato'} la lista “${name}”.`;
   else body=`${user.name} ha aggiornato ${item?'“'+item.name+'” in ':''}“${name}”.`;
+ }else if(path==='/api/covers/family'){category='links';title='La foto della famiglia';body=`${user.name} ha ${method==='DELETE'?'rimosso':'aggiornato'} la copertina della famiglia.`;
  }else if(/^\/api\/admin\/(links|categories)(?:\/|$)/.test(path)){
   category='links';title=path.includes('/categories')?'Categorie aggiornate':'Link della famiglia';
   body=`${user.name} ha ${method==='POST'?'aggiunto':method==='DELETE'?'rimosso':'aggiornato'} ${path.includes('/categories')?'una categoria':'un link'}${b.title||b.name?': “'+(b.title||b.name)+'”':''}.`;
@@ -113,7 +113,8 @@ async function dispatch(env){
    if(res.ok){await finish('sent');return;}
    const permanent=res.status>=400&&res.status<500&&![408,429].includes(res.status);
    const final=permanent||claimed.attempts>=5;
-   await finish(final?'failed':'pending','provider_'+res.status,Date.now()+Math.min(3600000,30000*4**(claimed.attempts-1)));
+   const retrySeconds=Number(res.headers.get('Retry-After')||0);const delay=Math.min(86400000,Math.max(Math.min(3600000,30000*4**(claimed.attempts-1)),Number.isFinite(retrySeconds)?retrySeconds*1000:0));
+   await finish(final?'failed':'pending','provider_'+res.status,Date.now()+delay);
   }catch{await finish(claimed.attempts>=5?'failed':'pending','delivery_error',Date.now()+Math.min(3600000,30000*4**(claimed.attempts-1)));}
  }
  for(let i=0;i<jobs.length;i+=5)await Promise.all(jobs.slice(i,i+5).map(deliver));
