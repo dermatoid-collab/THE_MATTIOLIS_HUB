@@ -8,17 +8,23 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
-  "d1_databases": [{
-    "binding": "DB",
-    "database_name": "mattiolis_hub_db",
-    "database_id": "8ff12924-77ff-4af1-87e9-d09f6aa089f3",
-    "migrations_dir": "migrations"
-  }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mattiolis_hub_db",
+      "database_id": "8ff12924-77ff-4af1-87e9-d09f6aa089f3",
+      "migrations_dir": "migrations"
+    }
+  ],
   "vars": {
-    "APP_ORIGIN": "https://INSERIRE-INDIRIZZO.workers.dev",
+    "APP_ORIGIN": "https://mattiolis-hub.dermatoid.workers.dev",
     "MAIL_FROM": "The Mattioli’s Hub <accesso@INSERIRE-DOMINIO.it>"
   },
-  "observability": { "enabled": false }
+  "observability": {
+    "enabled": false
+  }
 }
