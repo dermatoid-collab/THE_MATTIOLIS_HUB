@@ -8,7 +8,7 @@ paths.reuse='M20 7a8 8 0 0 0-13-2L3 9m0-6v6h6M4 17a8 8 0 0 0 13 2l4-4m0 6v-6h-6'
 paths.up='m6 15 6-6 6 6';
 paths.down='m6 9 6 6 6-6';
 const icon=(name,cls='')=>`<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.globe}"/></svg>`;
-const logo=()=>`<a class="brand" href="/" ${state.user?'data-action="navigate" data-view="all"':''} aria-label="The Mattioli’s Hub · Torna alla home"><svg viewBox="0 0 26 36" fill="none" aria-hidden="true"><path d="M3 2h20v32l-10-7-10 7Z" fill="currentColor"/><path d="M7 6h12v16H7Z" fill="var(--teal)" opacity=".2"/></svg><span class="brand-name"><small>THE</small>Mattioli’s Hub</span></a>`;
+const logo=()=>`<a class="brand" href="/" ${state.user?'data-action="navigate" data-view="all"':''} aria-label="The Mattioli’s Hub · Torna alla home"><img class="brand-icon" src="/brand-icon.svg?v=casa-b" width="40" height="40" alt=""><span class="brand-name"><small>THE</small>Mattioli’s Hub</span></a>`;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const app=document.querySelector('#app'),modal=document.querySelector('#modal');
 const state={demo:false,user:null,categories:[],links:[],favorites:[],users:[],view:'all',filter:'all',search:'',tab:'links',status:{},auth:'login'};
