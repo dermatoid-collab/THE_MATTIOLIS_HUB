@@ -23,3 +23,14 @@ test('pending admins cannot replace the last activated administrator',async()=>{
 test('regenerating invitation invalidates the previous link',async()=>{await setup();const u=(await call('/admin/users','POST',{name:'New',email:'new@example.com',role:'user'})).data.user;const invite1=(await call('/admin/users/'+u.id+'/invite','POST')).data.url;const invite2=(await call('/admin/users/'+u.id+'/invite','POST')).data.url;assert.equal((await call('/reset','POST',{token:invite1.split('=')[1],password:'a long new password!'})).status,400);assert.equal((await call('/reset','POST',{token:invite2.split('=')[1],password:'a long new password!'})).status,200);});
 test('anonymous visitors cannot enumerate users or export link records',async()=>{await setup();assert.equal((await call('/admin/users','GET',undefined,null)).status,401);assert.equal((await call('/data','GET',undefined,null)).status,401);});
 test('oversized requests are refused before parsing',async()=>{const r=await call('/login','POST',{email:'a'.repeat(40000)});assert.equal(r.status,413);});
+
+test('passwords have no length or composition rules, but must not be empty',async()=>{
+ await setup();
+ assert.equal((await call('/password','POST',{current:'una frase sicura 123!',password:'a'})).status,200);
+ const login=await call('/login','POST',{email:'admin@example.com',password:'a'});assert.equal(login.status,200);cookie=login.cookie;
+ for(const [current,password] of [['a','1'],['1','solo minuscole'],['solo minuscole','x'.repeat(129)]]){
+  assert.equal((await call('/password','POST',{current,password})).status,200);
+  const result=await call('/login','POST',{email:'admin@example.com',password});assert.equal(result.status,200);cookie=result.cookie;
+ }
+ assert.equal((await call('/password','POST',{current:'x'.repeat(129),password:''})).status,400);
+});
