@@ -23,7 +23,7 @@ export async function verifyPassword(password, stored) {
 }
 const text=(value,max=200)=>{ if(typeof value!=='string'||!value.trim()||value.trim().length>max) fail(400,'Controlla i campi obbligatori e la loro lunghezza.'); return value.trim(); };
 const emailOf=value=>{const v=text(value,254).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))fail(400,'Inserisci un indirizzo email valido.');return v;};
-const passwordOf=v=>{if(typeof v!=='string'||v.length<12||v.length>128)fail(400,'Usa una password tra 12 e 128 caratteri. Una frase lunga è ideale.');return v;};
+const passwordOf=v=>{if(typeof v!=='string'||v.length===0)fail(400,'Inserisci una password.');return v;};
 const roleOf=v=>{if(!['admin','user'].includes(v))fail(400,'Ruolo non valido.');return v;};
 const safeUser=u=>({id:u.id,email:u.email,name:u.name,role:u.role,active:!!u.active,pending:!u.password});
 const statement=(env,sql,...args)=>env.DB.prepare(sql).bind(...args);
@@ -67,7 +67,7 @@ export default {async fetch(req,env){
  }
  if(method==='POST'&&path==='/api/login'){
   const b=await body(req);const email=emailOf(b.email);await rate(env,'login-ip:'+ip,40,900);await rate(env,'login-email:'+email,10,900);
-  if(typeof b.password!=='string'||b.password.length>128)fail(401,'Email o password non corrette.');
+  if(typeof b.password!=='string'||b.password.length===0)fail(401,'Email o password non corrette.');
   const u=await first(env,'SELECT * FROM users WHERE email=?',email);
   // A fixed dummy record keeps unknown-account checks computationally comparable.
   const dummy='pbkdf2-sha256$100000$'+'0'.repeat(64)+'$'+'0'.repeat(64);
