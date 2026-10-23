@@ -18,6 +18,8 @@ jobs:
           node --check public/notifications.js
           node --check public/sw.js
           node --check src/notifications.mjs
+          node --check public/audit.js
+          node --check src/audit.mjs
           node --check public/app.js
           node --check public/shopping.js
           node --check src/shopping.mjs

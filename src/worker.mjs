@@ -1,3 +1,4 @@
+import {auditContext,writeAudit,auditRequest} from './audit.mjs';
 import {notificationsRequest,recordActivity,recordRelease,dispatchNotifications} from './notifications.mjs';
 import {shoppingRequest} from './shopping.mjs';
 const encoder = new TextEncoder();
@@ -132,6 +133,7 @@ async function handleRequest(req,env){
   const name=text(b.name,80),role=roleOf(b.role);if(typeof b.active!=='boolean')fail(400,'Stato non valido.');
   await env.DB.batch([statement(env,'UPDATE users SET name=?,role=?,active=? WHERE id=?',name,role,b.active?1:0,id),statement(env,'DELETE FROM sessions WHERE user_id=?',id),statement(env,'DELETE FROM tokens WHERE user_id=?',id)]);return json({ok:true});
  }
+ if(path==='/api/admin/audit')return await auditRequest(req,env,{json,fail});
  const linkPath=path.match(/^\/api\/admin\/links(?:\/([^/]+))?$/);
  if(linkPath){const id=linkPath[1];
   if(method==='DELETE'&&id){await run(env,'DELETE FROM links WHERE id=?',id);return json({ok:true});}
@@ -158,8 +160,10 @@ export default {
  async fetch(req,env,ctx){
   const tracked=['POST','PATCH','DELETE'].includes(req.method)&&/^\/api\/(shopping(?:\/|$)|admin\/(links|categories)(?:\/|$))/.test(new URL(req.url).pathname);
   const copy=tracked?req.clone():null;
+  let audit=null;try{audit=await auditContext(req,env,env.DB?await getSession(req,env):null);}catch{console.error('Audit context unavailable');}
   const response=await handleRequest(req,env);
   if(tracked&&response.ok){try{const user=await getSession(req,env);if(user)await recordActivity(copy,env,response,user);}catch{console.error('Notification event unavailable');}if(ctx)ctx.waitUntil(dispatchNotifications(env).catch(()=>console.error('Notification dispatch unavailable')));}
+  try{await writeAudit(env,audit,response);}catch{console.error('Audit write unavailable');}
   return response;
  },
  async scheduled(controller,env,ctx){const task=(async()=>{await recordRelease(env);await dispatchNotifications(env);})();ctx.waitUntil(task);}
