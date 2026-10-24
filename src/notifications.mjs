@@ -13,7 +13,7 @@ export const notificationSchema=[
  `CREATE INDEX IF NOT EXISTS notification_jobs_pending ON notification_jobs(status,available_at,lease_until)`
 ];
 const schemaReady=new WeakMap();
-export async function ensureNotifications(env){if(!schemaReady.has(env.DB))schemaReady.set(env.DB,env.DB.batch(notificationSchema.map(s=>env.DB.prepare(s))).catch(e=>{schemaReady.delete(env.DB);throw e;}));await schemaReady.get(env.DB);}
+export async function ensureNotifications(env){if(!schemaReady.has(env.DB))schemaReady.set(env.DB,(async()=>{await env.DB.batch(notificationSchema.map(s=>env.DB.prepare(s)));await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO notification_preferences(user_id,push_enabled,email_enabled,updated_at) SELECT id,1,1,? FROM users").bind(Date.now()),env.DB.prepare("UPDATE notification_preferences SET push_enabled=1,email_enabled=1,updated_at=? WHERE NOT EXISTS(SELECT 1 FROM notification_config WHERE key='channels_default_on_v1')").bind(Date.now()),env.DB.prepare("INSERT OR IGNORE INTO notification_config(key,value) VALUES('channels_default_on_v1','1')")]);})().catch(e=>{schemaReady.delete(env.DB);throw e;}));await schemaReady.get(env.DB);}
 const q=(env,sql,...v)=>env.DB.prepare(sql).bind(...v);
 const one=(env,sql,...v)=>q(env,sql,...v).first();
 const all=async(env,sql,...v)=>(await q(env,sql,...v).all()).results;
@@ -26,7 +26,7 @@ export async function vapidKeys(env){
  if(!stored){const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);const privateJwk=await crypto.subtle.exportKey('jwk',pair.privateKey);const keys={publicKey:b64(await crypto.subtle.exportKey('raw',pair.publicKey)),privateKey:privateJwk.d};await run(env,"INSERT OR IGNORE INTO notification_config(key,value) VALUES('vapid',?)",JSON.stringify(keys));stored=await one(env,"SELECT value FROM notification_config WHERE key='vapid'");}
  return{...JSON.parse(stored.value),subject:env.APP_ORIGIN};
 }
-async function preferences(env,userId){await run(env,'INSERT OR IGNORE INTO notification_preferences(user_id,updated_at) VALUES(?,?)',userId,Date.now());return one(env,'SELECT * FROM notification_preferences WHERE user_id=?',userId);}
+async function preferences(env,userId){await run(env,'INSERT OR IGNORE INTO notification_preferences(user_id,push_enabled,email_enabled,updated_at) VALUES(?,1,1,?)',userId,Date.now());return one(env,'SELECT * FROM notification_preferences WHERE user_id=?',userId);}
 const prefsPublic=p=>Object.fromEntries(['push_enabled','email_enabled','links','shopping','releases','ignore_own'].map(k=>[k,!!p[k]]));
 function safeUrl(url){return typeof url==='string'&&/^\/(?:#(?:shopping=[a-zA-Z0-9-]+|notifications))?$/.test(url)?url:'/';}
 export function validateSubscription(subscription){
@@ -44,11 +44,11 @@ async function sendPush(env,subscription,data){
 }
 async function sendEmail(env,to,event,key){return sendMail(env,{to,id:key,subject:`The Mattioli’s Hub · ${event.title}`,text:`${event.body}\n\nApri l’hub:\n${env.APP_ORIGIN}${safeUrl(event.url)}\n\nPuoi gestire le preferenze notifiche nel tuo account:\n${env.APP_ORIGIN}/#notifications`});}
 export async function recordEvent(env,{id=crypto.randomUUID(),key=null,category,actorId=null,title,body,url='/'}){
- await ensureNotifications(env);if(!['links','shopping','releases'].includes(category))throw Error('EVENT_CATEGORY');
+ await ensureNotifications(env);await run(env,'INSERT OR IGNORE INTO notification_preferences(user_id,push_enabled,email_enabled,updated_at) SELECT id,1,1,? FROM users',Date.now());if(!['links','shopping','releases'].includes(category))throw Error('EVENT_CATEGORY');
  const t=Date.now();
  const insertion=await run(env,'INSERT OR IGNORE INTO notification_events(id,event_key,category,actor_id,title,body,url,created_at) VALUES(?,?,?,?,?,?,?,?)',id,key,category,actorId,title.slice(0,100),body.slice(0,500),safeUrl(url),t);
  if(!insertion.meta.changes)return null;
- // Preferences are opt-in for outbound channels. Column names come only from the validated enum.
+ // Channels default on; users can opt out. Column names come only from the validated enum.
  const condition=`u.active=1 AND p.${category}=1 AND (? IS NULL OR p.ignore_own=0 OR p.user_id<>?)`;
  await env.DB.batch([
   q(env,`INSERT OR IGNORE INTO notification_jobs(event_id,user_id,channel,target_id,available_at) SELECT ?,p.user_id,'push',s.id,? FROM notification_preferences p JOIN users u ON u.id=p.user_id JOIN push_subscriptions s ON s.user_id=p.user_id WHERE p.push_enabled=1 AND ${condition}`,id,t,actorId,actorId),
@@ -94,10 +94,11 @@ export async function dispatchNotifications(env){
 }
 async function dispatch(env){
  await ensureNotifications(env);const t=Date.now();
- const jobs=await all(env,"SELECT * FROM notification_jobs WHERE ((status='pending' AND available_at<=?) OR (status='processing' AND lease_until<?)) AND (channel='push' OR ?=1) ORDER BY available_at LIMIT 10",t,t,mailConfigured(env)?1:0);
+ await run(env,"UPDATE notification_jobs SET status='failed',lease_until=0,available_at=0,last_error=COALESCE(last_error,'retry_limit') WHERE attempts>=3 AND (status='pending' OR (status='processing' AND lease_until<?))",t);
+ const jobs=await all(env,"SELECT * FROM notification_jobs WHERE attempts<3 AND ((status='pending' AND available_at<=?) OR (status='processing' AND lease_until<?)) AND (channel='push' OR ?=1) ORDER BY available_at LIMIT 10",t,t,mailConfigured(env)?1:0);
  async function deliver(job){
   if(job.channel==='email'&&!mailConfigured(env))return;
-  const claimed=await one(env,"UPDATE notification_jobs SET status='processing',lease_until=?,attempts=attempts+1 WHERE event_id=? AND user_id=? AND channel=? AND target_id=? AND ((status='pending' AND available_at<=?) OR (status='processing' AND lease_until<?)) RETURNING attempts",Date.now()+120000,job.event_id,job.user_id,job.channel,job.target_id,t,t);if(!claimed)return;
+  const claimed=await one(env,"UPDATE notification_jobs SET status='processing',lease_until=?,attempts=attempts+1 WHERE event_id=? AND user_id=? AND channel=? AND target_id=? AND attempts<3 AND ((status='pending' AND available_at<=?) OR (status='processing' AND lease_until<?)) RETURNING attempts",Date.now()+120000,job.event_id,job.user_id,job.channel,job.target_id,t,t);if(!claimed)return;
   const ids=[job.event_id,job.user_id,job.channel,job.target_id];
   async function finish(status,error=null,next=0){await run(env,'UPDATE notification_jobs SET status=?,last_error=?,available_at=?,lease_until=0 WHERE event_id=? AND user_id=? AND channel=? AND target_id=?',status,error,next,...ids);}
   try{
@@ -112,10 +113,10 @@ async function dispatch(env){
    }else res=await sendEmail(env,user.email,event,'hub-'+event.id+'-'+user.id);
    if(res.ok){await finish('sent');return;}
    const permanent=res.status>=400&&res.status<500&&![408,429].includes(res.status);
-   const final=permanent||claimed.attempts>=5;
+   const final=permanent||claimed.attempts>=3;
    const retrySeconds=Number(res.headers.get('Retry-After')||0);const delay=Math.min(86400000,Math.max(Math.min(3600000,30000*4**(claimed.attempts-1)),Number.isFinite(retrySeconds)?retrySeconds*1000:0));
    await finish(final?'failed':'pending','provider_'+res.status,Date.now()+delay);
-  }catch{await finish(claimed.attempts>=5?'failed':'pending','delivery_error',Date.now()+Math.min(3600000,30000*4**(claimed.attempts-1)));}
+  }catch{await finish(claimed.attempts>=3?'failed':'pending','delivery_error',Date.now()+Math.min(3600000,30000*4**(claimed.attempts-1)));}
  }
  for(let i=0;i<jobs.length;i+=5)await Promise.all(jobs.slice(i,i+5).map(deliver));
  await run(env,'DELETE FROM notification_events WHERE created_at<?',Date.now()-30*86400000);
