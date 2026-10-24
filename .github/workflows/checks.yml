@@ -23,6 +23,8 @@ jobs:
           node --check public/covers.js
           node --check src/covers.mjs
           node --check src/mail.mjs
+          node --check public/delivery-status.js
+          node --check src/notification-status.mjs
           node --check public/app.js
           node --check public/shopping.js
           node --check src/shopping.mjs

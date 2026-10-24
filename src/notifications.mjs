@@ -119,6 +119,7 @@ async function dispatch(env){
  }
  for(let i=0;i<jobs.length;i+=5)await Promise.all(jobs.slice(i,i+5).map(deliver));
  await run(env,'DELETE FROM notification_events WHERE created_at<?',Date.now()-30*86400000);
+ await run(env,"INSERT INTO notification_config(key,value) VALUES('last_dispatch',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify({at:Date.now(),processed:jobs.length}));
 }
 export async function notificationsRequest(req,env,user,{body,json,fail,rate}){
  await ensureNotifications(env);const path=new URL(req.url).pathname,method=req.method;
