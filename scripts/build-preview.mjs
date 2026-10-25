@@ -8,7 +8,8 @@ const notifications=readFileSync(new URL('public/notifications.js',root),'utf8')
 const audit=readFileSync(new URL('public/audit.js',root),'utf8').replace('export function createAudit','function createAudit');
 const covers=readFileSync(new URL('public/covers.js',root),'utf8').replace('export function createCovers','function createCovers');
 const deliveryStatus=readFileSync(new URL('public/delivery-status.js',root),'utf8').replace('export function createDeliveryStatus','function createDeliveryStatus');
-let js=deliveryStatus+'\n'+covers+'\n'+audit+'\n'+notifications+'\n'+shopping+'\n'+readFileSync(new URL('public/app.js',root),'utf8').replace("import {createDeliveryStatus} from './delivery-status.js';",'').replace("import {createCovers} from './covers.js';",'').replace("import {createAudit} from './audit.js';",'').replace("import {createNotifications} from './notifications.js';",'').replace("import {createShopping} from './shopping.js';",'');
+const contentTools=readFileSync(new URL('public/content-tools.js',root),'utf8').replaceAll('export function','function');
+let js=contentTools+'\n'+deliveryStatus+'\n'+covers+'\n'+audit+'\n'+notifications+'\n'+shopping+'\n'+readFileSync(new URL('public/app.js',root),'utf8').replace("import {matchesContent,sortContents,sortOptions} from './content-tools.js';",'').replace("import {createDeliveryStatus} from './delivery-status.js';",'').replace("import {createCovers} from './covers.js';",'').replace("import {createAudit} from './audit.js';",'').replace("import {createNotifications} from './notifications.js';",'').replace("import {createShopping} from './shopping.js';",'');
 // This artifact intentionally starts the demo even inside an HTML preview service.
 js=js.replace("if(location.protocol==='file:'||new URLSearchParams(location.search).has('demo'))", "if(true)");
 const favicon='data:image/svg+xml,'+encodeURIComponent(readFileSync(new URL('public/favicon.svg',root),'utf8'));
