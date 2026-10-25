@@ -6,6 +6,8 @@ import {notificationsRequest,recordActivity,recordRelease,dispatchNotifications}
 import {shoppingRequest} from './shopping.mjs';
 const encoder = new TextEncoder();
 const SESSION_TTL = 60 * 60 * 12;
+// Persistent cookie renewed on app startup; remembered sessions have no server expiry.
+const REMEMBER_COOKIE_TTL = 60 * 60 * 24 * 400;
 const GENERIC_RESET = 'Se l’indirizzo è associato a un account attivo, riceverai un link per scegliere una nuova password.';
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const fail = (status, message) => { throw new HttpError(status, message); };
@@ -50,8 +52,8 @@ async function body(req){
 }
 function originCheck(req,env){const origin=req.headers.get('origin');if(!env.APP_ORIGIN||origin!==env.APP_ORIGIN||new URL(req.url).origin!==env.APP_ORIGIN)fail(403,'Origine della richiesta non autorizzata.');}
 async function rate(env,key,limit,seconds){const k=await digest(key);const t=now();const row=await first(env,`INSERT INTO rate_limits(key,attempts,until_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN until_at<=? THEN 1 ELSE attempts+1 END,until_at=CASE WHEN until_at<=? THEN excluded.until_at ELSE until_at END RETURNING attempts`,k,t+seconds,t,t);if(row.attempts>limit)fail(429,'Troppi tentativi. Riprova più tardi.');}
-async function getSession(req,env){const token=req.headers.get('cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith(cookieName(env)+'='))?.split('=')[1];if(!token)return null;return first(env,'SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.hash=? AND s.expires_at>? AND u.active=1',await digest(token),now());}
-async function startSession(env,user){const token=random();await env.DB.batch([statement(env,'DELETE FROM sessions WHERE expires_at<=?',now()),statement(env,'INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)',await digest(token),user.id,now()+SESSION_TTL)]);return json({user:safeUser(user)},200,{'Set-Cookie':cookie(env,token)});}
+async function getSession(req,env){const token=req.headers.get('cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith(cookieName(env)+'='))?.split('=')[1];if(!token)return null;return first(env,'SELECT u.*,s.expires_at session_expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.hash=? AND (s.expires_at=0 OR s.expires_at>?) AND u.active=1',await digest(token),now());}
+async function startSession(env,user,remember=false){const ttl=remember?REMEMBER_COOKIE_TTL:SESSION_TTL;const token=random();await env.DB.batch([statement(env,'DELETE FROM sessions WHERE expires_at>0 AND expires_at<=?',now()),statement(env,'INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)',await digest(token),user.id,remember?0:now()+ttl)]);return json({user:safeUser(user)},200,{'Set-Cookie':cookie(env,token,ttl)});}
 async function sendReset(env,email,url){const res=await sendMail(env,{to:email,subject:'The Mattioli’s Hub · Reimposta la password',text:`Hai richiesto una nuova password per The Mattioli’s Hub.\n\nApri questo link entro 30 minuti:\n${url}\n\nIl link è utilizzabile una sola volta. Se non hai richiesto tu il recupero, ignora questa email.\nThe Mattioli’s Hub non ti chiederà mai di comunicare la tua password.`});if(!res.ok)throw new Error('MAIL_DELIVERY_FAILED');}
 async function handleRequest(req,env){
  try {
@@ -78,7 +80,7 @@ async function handleRequest(req,env){
   const dummy='pbkdf2-sha256$100000$'+'0'.repeat(64)+'$'+'0'.repeat(64);
   const verified=await verifyPassword(b.password,u?.password||dummy);
   if(!verified||!u?.active||!u?.password)fail(401,'Email o password non corrette.');
-  return startSession(env,u);
+  return startSession(env,u,b.remember===true);
  }
  if(method==='POST'&&path==='/api/forgot'){
   if(!mailReady(env))fail(503,'Il recupero via email non è ancora attivo. Contatta l’amministratore.');
@@ -103,7 +105,7 @@ async function handleRequest(req,env){
  if(path==='/api/covers'||path.startsWith('/api/covers/'))return await coversRequest(req,env,user,{json,fail,rate});
  if(path==='/api/notifications'||path.startsWith('/api/notifications/'))return await notificationsRequest(req,env,user,{body,json,fail,rate});
  if(path==='/api/shopping'||path.startsWith('/api/shopping/'))return await shoppingRequest(req,env,user,{body,json,fail});
- if(method==='GET'&&path==='/api/me')return json({user:safeUser(user)});
+ if(method==='GET'&&path==='/api/me'){const token=req.headers.get('cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith(cookieName(env)+'='))?.split('=')[1];return json({user:safeUser(user)},200,user.session_expires_at===0?{'Set-Cookie':cookie(env,token,REMEMBER_COOKIE_TTL)}:{});}
  if(method==='POST'&&path==='/api/logout'){const token=req.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName(env)+'='))?.split('=')[1];if(token)await run(env,'DELETE FROM sessions WHERE hash=?',await digest(token));return json({ok:true},200,{'Set-Cookie':cookie(env,'',0)});}
  if(method==='POST'&&path==='/api/password'){
   const b=await body(req);await rate(env,'password:'+user.id,5,900);if(typeof b.current!=='string'||!await verifyPassword(b.current,user.password))fail(400,'Password attuale non corretta.');const hash=await hashPassword(passwordOf(b.password));
