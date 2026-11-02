@@ -30,5 +30,7 @@ jobs:
           node --check src/shopping.mjs
           node --check src/worker.mjs
           node --check src/page-permissions.mjs
+          node --check src/previews.mjs
+          node --check public/previews.js
       - name: Test backend e autorizzazioni
         run: npm test
