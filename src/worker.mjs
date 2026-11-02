@@ -1,3 +1,4 @@
+import {ensurePagePermissions,pagePermissionRequest,pageKey} from './page-permissions.mjs';
 import {notificationStatus} from './notification-status.mjs';
 import {sendMail,mailConfigured as mailReady} from './mail.mjs';
 import {coversRequest} from './covers.mjs';
@@ -113,13 +114,21 @@ async function handleRequest(req,env){
   return json({message:'Password aggiornata. Accedi nuovamente.'},200,{'Set-Cookie':cookie(env,'',0)});
  }
  if(method==='GET'&&path==='/api/data'){
-  const [categories,links,favorites]=await Promise.all([all(env,'SELECT * FROM categories ORDER BY position,name'),all(env,'SELECT * FROM links ORDER BY position,title'),all(env,'SELECT link_id FROM favorites WHERE user_id=?',user.id)]);
-  return json({categories,links,favorites:favorites.map(x=>x.link_id)});
+  await ensurePagePermissions(env);
+  const [categories,links,favorites]=await Promise.all([all(env,"SELECT c.*,COALESCE(p.members_can_add,1) members_can_add FROM categories c LEFT JOIN page_permissions p ON p.page_key='category:'||c.id ORDER BY c.position,c.name"),all(env,'SELECT * FROM links ORDER BY position,title'),all(env,'SELECT link_id FROM favorites WHERE user_id=?',user.id)]);
+  const permission=await first(env,"SELECT members_can_add FROM page_permissions WHERE page_key='uncategorized'");return json({categories,links,favorites:favorites.map(x=>x.link_id),uncategorized_can_add:permission?.members_can_add??1});
  }
  const fav=path.match(/^\/api\/favorites\/([^/]+)$/);
  if(fav&&['POST','DELETE'].includes(method)){if(!await first(env,'SELECT id FROM links WHERE id=?',fav[1]))fail(404,'Link non trovato.');if(method==='POST')await run(env,'INSERT OR IGNORE INTO favorites(user_id,link_id) VALUES(?,?)',user.id,fav[1]);else await run(env,'DELETE FROM favorites WHERE user_id=? AND link_id=?',user.id,fav[1]);return json({ok:true});}
+ if(method==='POST'&&path==='/api/links'){
+  await ensurePagePermissions(env);const b=await body(req),title=text(b.title,100),address=text(b.url,2048),description=typeof b.description==='string'?b.description.trim():'';if(description.length>300)fail(400,'Descrizione troppo lunga (massimo 300 caratteri).');
+  let parsed;try{parsed=new URL(address);}catch{fail(400,'Indirizzo non valido.');}if(!['https:','http:'].includes(parsed.protocol)||parsed.username||parsed.password)fail(400,'Usa un indirizzo HTTP o HTTPS senza credenziali.');
+  const category=b.category_id||null;if(category!==null&&typeof category!=='string')fail(400,'Pagina non valida.');if(category&&!await first(env,'SELECT id FROM categories WHERE id=?',category))fail(400,'Categoria inesistente.');const pos=Number(b.position??0);if(!Number.isSafeInteger(pos)||Math.abs(pos)>100000)fail(400,'Posizione non valida.');
+  const result=await run(env,"INSERT INTO links(id,title,url,description,category_id,position,created_at,updated_at) SELECT ?,?,?,?,?,?,?,? WHERE ?=1 OR COALESCE((SELECT members_can_add FROM page_permissions WHERE page_key=?),1)=1",crypto.randomUUID(),title,parsed.href,description,category,pos,now(),now(),user.role==='admin'?1:0,pageKey(category));if(!result.meta.changes)fail(403,'L’amministratore ha disattivato l’aggiunta di contenuti per questa pagina.');return json({ok:true},201);
+ }
  if(!path.startsWith('/api/admin/'))fail(404,'Risorsa non trovata.');
  if(user.role!=='admin')fail(403,'Questa funzione è riservata agli amministratori.');
+ if(path==='/api/admin/page-permissions')return await pagePermissionRequest(req,env,{body,json,fail});
  if(method==='GET'&&path==='/api/admin/users')return json({users:(await all(env,'SELECT * FROM users ORDER BY created_at,name')).map(safeUser)});
  if(method==='POST'&&path==='/api/admin/users'){
   const b=await body(req),email=emailOf(b.email),name=text(b.name,80),role=roleOf(b.role),id=crypto.randomUUID();
@@ -164,7 +173,7 @@ async function handleRequest(req,env){
 
 export default {
  async fetch(req,env,ctx){
-  const tracked=['POST','PATCH','DELETE'].includes(req.method)&&/^\/api\/(shopping(?:\/|$)|admin\/(links|categories)(?:\/|$)|covers\/family$)/.test(new URL(req.url).pathname);
+  const tracked=['POST','PATCH','DELETE'].includes(req.method)&&/^\/api\/(links(?:\/|$)|shopping(?:\/|$)|admin\/(links|categories)(?:\/|$)|covers\/family$)/.test(new URL(req.url).pathname);
   const copy=tracked?req.clone():null;
   let audit=null;try{audit=await auditContext(req,env,env.DB?await getSession(req,env):null);}catch{console.error('Audit context unavailable');}
   const response=await handleRequest(req,env);

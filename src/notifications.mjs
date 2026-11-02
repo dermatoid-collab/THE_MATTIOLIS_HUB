@@ -76,7 +76,7 @@ export async function recordActivity(req,env,response,user){
   else if(typeof b.archived==='boolean')body=`${user.name} ha ${b.archived?'archiviato':'ripristinato'} la lista “${name}”.`;
   else body=`${user.name} ha aggiornato ${item?'“'+item.name+'” in ':''}“${name}”.`;
  }else if(path==='/api/covers/family'){category='links';title='La foto della famiglia';body=`${user.name} ha ${method==='DELETE'?'rimosso':'aggiornato'} la copertina della famiglia.`;
- }else if(/^\/api\/admin\/(links|categories)(?:\/|$)/.test(path)){
+ }else if(path==='/api/links'||/^\/api\/admin\/(links|categories)(?:\/|$)/.test(path)){
   category='links';title=path.includes('/categories')?'Categorie aggiornate':'Link della famiglia';
   body=`${user.name} ha ${method==='POST'?'aggiunto':method==='DELETE'?'rimosso':'aggiornato'} ${path.includes('/categories')?'una categoria':'un link'}${b.title||b.name?': “'+(b.title||b.name)+'”':''}.`;
  }else return;
